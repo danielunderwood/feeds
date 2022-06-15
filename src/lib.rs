@@ -14,6 +14,7 @@ const UPSTREAM_URL: &str =
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Vulnerability {
+    #[serde(rename = "cveID")]
     cve_id: Option<String>,
     vendor_project: String,
     product: String,
