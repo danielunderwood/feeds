@@ -123,7 +123,7 @@ pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> Result<Respo
             let channel = ChannelBuilder::default()
                 .title("CISA Exploited Vulnerabilities")
                 // TODO This should be calculated from the workers env
-                .link("https://feeds.danielunderwood.dev/exploited-vulns.xml")
+                .link("https://www.cisa.gov/known-exploited-vulnerabilities-catalog")
                 .description("RSS feed of the CISA exploited vulnerabilities list")
                 .pub_date(response.date_released.clone())
                 // TODO Once we build in a cron, this should be the last fetch date
