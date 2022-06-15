@@ -35,6 +35,10 @@ pub struct CatalogResponse {
     vulnerabilities: Vec<Vulnerability>,
 }
 
+pub fn make_cve_link(cve: String) -> String {
+    format!("https://nvd.nist.gov/vuln/detail/{}", cve)
+}
+
 pub fn response_from_xml(xml: impl AsRef<str>) -> Result<Response> {
     let mut headers = Headers::new();
     headers.set("content-type", "text/xml")?;
@@ -114,6 +118,9 @@ pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> Result<Respo
                 item.set_title(vuln.vulnerability_name);
                 item.set_description(vuln.short_description);
                 item.set_pub_date(vuln.date_added);
+                if let Some(cve) = vuln.cve_id {
+                    item.set_link(make_cve_link(cve));
+                }
                 items.push(item);
             }
             // In-place sort
