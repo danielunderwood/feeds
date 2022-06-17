@@ -172,7 +172,7 @@ dependencies = [
 
 [[package]]
 name = "exploited-vulns-feed"
-version = "0.3.0"
+version = "1.0.0"
 dependencies = [
  "cfg-if 0.1.10",
  "rss",

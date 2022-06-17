@@ -1,11 +1,11 @@
-use serde_json::json;
-// use worker::response::Response;
 use rss::{ChannelBuilder, Item};
 use serde::{Deserialize, Serialize};
 use worker::*;
 
 const UPSTREAM_URL: &str =
     "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json";
+const KV_NAMESPACE: &str = "EXPLOITED_VULNS_FEED";
+const UPSTREAM_KV_KEY: &str = "upstream_response";
 
 // See https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities_schema.json
 // for the definition of these structs
@@ -63,13 +63,29 @@ fn log_request(req: &Request) {
     );
 }
 
-async fn fetch_upstream() -> Result<Response> {
+async fn fetch_upstream() -> Result<CatalogResponse> {
     let url = Url::parse(UPSTREAM_URL)?;
-    Fetch::Url(url).send().await
+    let response = Fetch::Url(url).send().await;
+    match response {
+        Ok(mut r) => r.json::<CatalogResponse>().await,
+        Err(r) => Err(r)
+    }
+}
+
+#[event(scheduled)]
+pub async fn cron(_event: ScheduledEvent, env: Env, _ctx: worker::ScheduleContext) {
+    // These will all panic if they fail, but thaqt shouldn't be terrible for a scheduled task
+    let kv = env.kv(KV_NAMESPACE).unwrap();
+    let result = fetch_upstream().await.unwrap();
+    if let Ok(put) = kv.put(UPSTREAM_KV_KEY, &result) {
+        if let Err(pe) = put.execute().await {
+            console_log!("Failed updating KV: {}", pe)
+        }
+    }
 }
 
 #[event(fetch)]
-pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> Result<Response> {
+pub async fn main(req: Request, env: Env, ctx: worker::Context) -> Result<Response> {
     log_request(&req);
 
     // Optionally, use the Router to handle matching endpoints, use ":name" placeholders, or "*name"
@@ -81,15 +97,27 @@ pub async fn main(req: Request, env: Env, _ctx: worker::Context) -> Result<Respo
     // functionality and a `RouteContext` which you can use to  and get route parameters and
     // Environment bindings like KV Stores, Durable Objects, Secrets, and Variables.
     router
-        .get_async("/*rss.xml", |_, _| async move {
-            // let mut item = Item::default();
-            // item.set_title("Some exploited vulnerability".to_string());
-            // item.set_link("https://cisa.gov".to_string());
-            // let items = vec![item];
+        .get_async("/*rss.xml", |_req, ctx| async move {
             // I'm not sure why, but vulns.json() wants vulns to be mutable
             // There's probably also something better to be done with async here
-            let mut vulns = fetch_upstream().await?;
-            let response = vulns.json::<CatalogResponse>().await?;
+            let kv = ctx.kv(KV_NAMESPACE)?;
+            let kv_response = kv.get(UPSTREAM_KV_KEY).json::<CatalogResponse>().await;
+            let response: CatalogResponse = match kv_response {
+                Ok(Some(r)) =>  r,
+                // If we don't have a KV response, try to fetch from upstream
+                // Unwrap will panic here if upstream fetch fails, but we don't
+                // have any successful paths forward at that point
+                _ => {
+                    console_log!("No KV response -- falling back to an upstream fetch");
+                    let response = fetch_upstream().await.unwrap();
+                    if let Ok(put) = kv.put(UPSTREAM_KV_KEY, &response) {
+                        if let Err(pe) = put.execute().await {
+                            console_log!("Error while updating KV: {:?}", pe)
+                        }
+                    }
+                    response
+                }
+            };
             let mut items: Vec<Item> = Vec::new();
             for vuln in response.vulnerabilities {
                 let mut item = Item::default();
