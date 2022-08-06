@@ -4,6 +4,8 @@ use worker::*;
 
 const UPSTREAM_URL: &str =
     "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json";
+const PROJECTS_URL: &str =
+    "https://danielunderwood.dev/projects#feeds";
 const KV_NAMESPACE: &str = "EXPLOITED_VULNS_FEED";
 const UPSTREAM_KV_KEY: &str = "upstream_response";
 
@@ -97,7 +99,13 @@ pub async fn main(req: Request, env: Env, ctx: worker::Context) -> Result<Respon
     // functionality and a `RouteContext` which you can use to  and get route parameters and
     // Environment bindings like KV Stores, Durable Objects, Secrets, and Variables.
     router
-        .get_async("/*rss.xml", |_req, ctx| async move {
+        .get("/", |_, _| {
+            let url = Url::parse(PROJECTS_URL)?;
+            Response::redirect(url)
+        })
+        // TODO This shouldn't be wildcarded, but need to make verify what links
+        // I've shared
+        .get_async("/exploited-vulns/*.xml", |_req, ctx| async move {
             // I'm not sure why, but vulns.json() wants vulns to be mutable
             // There's probably also something better to be done with async here
             let kv = ctx.kv(KV_NAMESPACE)?;
